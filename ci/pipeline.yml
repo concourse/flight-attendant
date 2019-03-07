@@ -8,7 +8,7 @@ resource_types:
 resources:
 - name: flight-attendant
   type: git
-  source: {uri: "https://github.com/vito/booklit"}
+  source: {uri: "https://github.com/topherbullock/flight-attendant"}
 
 - name: weekday-mornings
   type: time
