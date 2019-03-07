@@ -18,6 +18,7 @@ type pagerdutyUser struct {
 type slackUser struct {
 	RealName string `json:"real_name"`
 	Name     string `json:"name"`
+	ID       string `json:"id"`
 }
 
 type slackUserInfo struct {
@@ -158,7 +159,7 @@ func message(users []pagerdutyUser, slackUsers map[string]slackUser) string {
 		contactMethod := u.Email
 
 		if _, ok := slackUsers[u.Name]; ok {
-			contactMethod = fmt.Sprintf("@%s", slackUsers[u.Name].Name)
+			contactMethod = fmt.Sprintf("<@%s>", slackUsers[u.Name].ID)
 		}
 
 		msg = fmt.Sprintf(`%s
