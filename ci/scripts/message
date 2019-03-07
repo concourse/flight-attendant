@@ -1,0 +1,7 @@
+#!/bin/bash
+
+
+pushd flight-attendant
+  go run main.go > ../message/message.txt
+popd
+

@@ -1,0 +1,20 @@
+---
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: golang
+
+inputs:
+- name: flight-attendant
+
+outputs:
+- name: message
+
+params:
+  PAGERDUTY_API_KEY:
+  PAGERDUTY_ESCALATION_POLICY:
+
+run:
+  path: flight-attendant/ci/scripts/message

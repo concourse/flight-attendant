@@ -1,0 +1,39 @@
+resource_types:
+- name: slack
+  type: docker-image
+  source:
+    repository: cfcommunity/slack-notification-resource
+    tag: latest
+
+resources:
+- name: flight-attendant
+  type: git
+  source: {uri: "https://github.com/vito/booklit"}
+
+- name: weekday-mornings
+  type: time
+  source:
+    start: 9:00 AM
+    stop: 10:00 AM
+    days: [Monday, Tuesday, Wednesday, Thursday, Friday]
+    location: "America/Toronto"
+
+- name: intercom
+  type: slack
+  source:
+    url: ((slack-hook))
+
+jobs:
+- name: passenger-announcement
+  plan:
+  - get: flight-attendant
+  - get: weekday-mornings
+    trigger: true
+  - task: message
+    file: flight-attendant/ci/tasks/message.yml
+    params:
+      PAGERDUTY_ESCALATION_POLICY: ((pd-escalation-policy))
+      PAGERDUTY_API_KEY: ((pd-api-key))
+  - put: intercom
+    params:
+      text_file: message/message.txt
