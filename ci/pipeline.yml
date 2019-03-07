@@ -1,6 +1,6 @@
 resource_types:
 - name: slack
-  type: docker-image
+  type: registry-image
   source:
     repository: cfcommunity/slack-notification-resource
     tag: latest
@@ -34,6 +34,8 @@ jobs:
     params:
       PAGERDUTY_ESCALATION_POLICY: ((pd-escalation-policy))
       PAGERDUTY_API_KEY: ((pd-api-key))
+      SLACK_TOKEN: ((slack-token))
+      SLACK_CHANNEL: ((slack-channel))
   - put: intercom
     params:
       text_file: message/message.txt

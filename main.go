@@ -10,9 +10,24 @@ import (
 	"os"
 )
 
-type user struct {
+type pagerdutyUser struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
+}
+
+type slackUser struct {
+	RealName string `json:"real_name"`
+	Name     string `json:"name"`
+}
+
+type slackUserInfo struct {
+	User slackUser `json:"user"`
+}
+
+type slackGroup struct {
+	Group struct {
+		Members []string `json:"members"`
+	} `json:"group"`
 }
 
 type schedule struct {
@@ -20,7 +35,7 @@ type schedule struct {
 }
 
 type oncall struct {
-	User user `json:"user"`
+	User pagerdutyUser `json:"user"`
 }
 
 func main() {
@@ -36,12 +51,59 @@ func main() {
 		os.Exit(1)
 	}
 
+	slackToken := os.Getenv("SLACK_TOKEN")
+	if slackToken == "" {
+		log.Fatal(fmt.Errorf("Empty or unset environment variable SLACK_TOKEN"))
+		os.Exit(1)
+	}
+
+	channel := os.Getenv("SLACK_CHANNEL")
+	if channel == "" {
+		log.Fatal(fmt.Errorf("Empty or unset environment variable SLACK_CHANNEL"))
+		os.Exit(1)
+	}
+
+	slackUsers := getSlackUsers(slackToken, channel)
+	onCallUsers := getPagerdutyUsers(key, escalationPolicy)
+
+	fmt.Print(message(onCallUsers, slackUsers))
+}
+
+func getSlackUsers(token, channel string) (users map[string]slackUser) {
+	users = make(map[string]slackUser)
+	resp, err := http.Get(fmt.Sprintf("https://slack.com/api/groups.info?token=%s&channel=%s", token, channel))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+
+	var group slackGroup
+	err = json.Unmarshal(body, &group)
+
+	var userInfo slackUserInfo
+	for _, member := range group.Group.Members {
+		r, err := http.Get(fmt.Sprintf("https://slack.com/api/users.info?token=%s&user=%s", token, member))
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		body, err := ioutil.ReadAll(r.Body)
+
+		err = json.Unmarshal(body, &userInfo)
+		users[userInfo.User.RealName] = userInfo.User
+		r.Body.Close()
+	}
+	return
+}
+
+func getPagerdutyUsers(key, escalationPolicy string) []pagerdutyUser {
 	r, err := onCallSchedule(key, escalationPolicy)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	var users []user
+	var users []pagerdutyUser
 	seen := make(map[string]struct{}, len(r.Oncalls))
 	for _, onCall := range r.Oncalls {
 		if _, ok := seen[onCall.User.Email]; ok {
@@ -52,7 +114,7 @@ func main() {
 		users = append(users, onCall.User)
 	}
 
-	fmt.Print(string(message(users)))
+	return users
 }
 
 func onCallSchedule(key, escalationPolicy string) (resp schedule, err error) {
@@ -90,11 +152,17 @@ func onCallSchedule(key, escalationPolicy string) (resp schedule, err error) {
 	return
 }
 
-func message(users []user) []byte {
+func message(users []pagerdutyUser, slackUsers map[string]slackUser) string {
 	msg := `Current on-call users:`
 	for _, u := range users {
+		contactMethod := u.Email
+
+		if _, ok := slackUsers[u.Name]; ok {
+			contactMethod = fmt.Sprintf("@%s", slackUsers[u.Name].Name)
+		}
+
 		msg = fmt.Sprintf(`%s
-- %s (%s)`, msg, u.Name, u.Email)
+- %s ( %s )`, msg, u.Name, contactMethod)
 	}
-	return []byte(msg)
+	return msg
 }
