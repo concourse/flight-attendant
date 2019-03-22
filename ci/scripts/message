@@ -1,5 +1,6 @@
 #!/bin/bash
 
+cp "time/input" flight-attendant/input
 
 pushd flight-attendant
   go run main.go > ../message/message.txt

@@ -40,6 +40,14 @@ type oncall struct {
 	User pagerdutyUser `json:"user"`
 }
 
+type timeResourceOutput struct {
+	Version timeResourceVersion `json:"version"`
+}
+
+type timeResourceVersion struct {
+	Time string `json:"time"`
+}
+
 const (
 	today      = "Current"
 	nextDay    = "Next"
@@ -78,7 +86,11 @@ func main() {
 	}
 
 	var scheduleDate time.Time
-	now := time.Now()
+	now, err := readTime("input")
+	if err != nil {
+		log.Fatal(fmt.Errorf("Could not read time", err))
+		os.Exit(1)
+	}
 
 	switch timeframe {
 	case today:
@@ -192,6 +204,21 @@ func message(timeframe, date string, users []pagerdutyUser, slackUsers map[strin
 - %s ( %s )`, msg, u.Name, contactMethod)
 	}
 	return msg
+}
+
+func readTime(inputFileName string) (time.Time, error) {
+	file, err := ioutil.ReadFile(inputFileName)
+	if err != nil {
+		return time.Now(), err
+	}
+
+	var version timeResourceOutput
+	err = json.Unmarshal(file, &version)
+	if err != nil {
+		return time.Now(), err
+	}
+
+	return time.Parse(time.RFC3339, version.Version.Time)
 }
 
 func getNextWorkDay(now time.Time) time.Time {

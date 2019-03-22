@@ -35,7 +35,8 @@ jobs:
 - name: welcome-aboard
   plan:
   - get: flight-attendant
-  - get: weekday-mornings
+  - get: time
+    resource: weekday-mornings
     trigger: true
   - task: message
     file: flight-attendant/ci/tasks/message.yml
@@ -52,7 +53,8 @@ jobs:
 - name: crew-change
   plan:
   - get: flight-attendant
-  - get: weekday-afternoons
+  - get: time
+    resource: weekday-afternoons
     trigger: true
   - task: message
     file: flight-attendant/ci/tasks/message.yml
