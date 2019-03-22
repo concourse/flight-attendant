@@ -17,6 +17,7 @@ params:
   PAGERDUTY_ESCALATION_POLICY:
   SLACK_TOKEN:
   SLACK_CHANNEL:
+  CREW_TIMEFRAME:
 
 run:
   path: flight-attendant/ci/scripts/message
