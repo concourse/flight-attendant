@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 )
 
 type pagerdutyUser struct {
@@ -39,6 +40,12 @@ type oncall struct {
 	User pagerdutyUser `json:"user"`
 }
 
+const (
+	today      = "Current"
+	nextDay    = "Next"
+	timeFormat = "Mon, Jan 02"
+)
+
 func main() {
 	key := os.Getenv("PAGERDUTY_API_KEY")
 	if key == "" {
@@ -64,10 +71,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	slackUsers := getSlackUsers(slackToken, channel)
-	onCallUsers := getPagerdutyUsers(key, escalationPolicy)
+	timeframe := os.Getenv("CREW_TIMEFRAME")
+	if timeframe == "" {
+		log.Fatal(fmt.Errorf("Empty or unset environment variable CREW_TIMEFRAME"))
+		os.Exit(1)
+	}
 
-	fmt.Print(message(onCallUsers, slackUsers))
+	var scheduleDate time.Time
+	now := time.Now()
+
+	switch timeframe {
+	case today:
+		scheduleDate = now
+	case nextDay:
+		scheduleDate = getNextWorkDay(now)
+	default:
+		log.Fatal(fmt.Errorf("CREW_TIMEFRAME must be one of: (%s|%s)", today, nextDay))
+		os.Exit(1)
+	}
+
+	slackUsers := getSlackUsers(slackToken, channel)
+	onCallUsers := getPagerdutyUsers(key, escalationPolicy, scheduleDate.Format(time.RFC3339))
+
+	fmt.Print(message(timeframe, scheduleDate.Format(timeFormat), onCallUsers, slackUsers))
 }
 
 func getSlackUsers(token, channel string) (users map[string]slackUser) {
@@ -98,8 +124,8 @@ func getSlackUsers(token, channel string) (users map[string]slackUser) {
 	return
 }
 
-func getPagerdutyUsers(key, escalationPolicy string) []pagerdutyUser {
-	r, err := onCallSchedule(key, escalationPolicy)
+func getPagerdutyUsers(key, escalationPolicy, date string) []pagerdutyUser {
+	r, err := onCallSchedule(key, escalationPolicy, date)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -118,8 +144,8 @@ func getPagerdutyUsers(key, escalationPolicy string) []pagerdutyUser {
 	return users
 }
 
-func onCallSchedule(key, escalationPolicy string) (resp schedule, err error) {
-	u, err := url.Parse(fmt.Sprintf("https://api.pagerduty.com/oncalls?time_zone=UTC&include[]=users&escalation_policy_ids[]=%s", escalationPolicy))
+func onCallSchedule(key, escalationPolicy, date string) (resp schedule, err error) {
+	u, err := url.Parse(fmt.Sprintf("https://api.pagerduty.com/oncalls?time_zone=UTC&include[]=users&escalation_policy_ids[]=%s&since=%s&until=%s", escalationPolicy, date, date))
 	if err != nil {
 		return
 	}
@@ -153,8 +179,8 @@ func onCallSchedule(key, escalationPolicy string) (resp schedule, err error) {
 	return
 }
 
-func message(users []pagerdutyUser, slackUsers map[string]slackUser) string {
-	msg := `Current on-call users:`
+func message(timeframe, date string, users []pagerdutyUser, slackUsers map[string]slackUser) string {
+	msg := timeframe + ` on-call users for ` + date + `:`
 	for _, u := range users {
 		contactMethod := u.Email
 
@@ -166,4 +192,12 @@ func message(users []pagerdutyUser, slackUsers map[string]slackUser) string {
 - %s ( %s )`, msg, u.Name, contactMethod)
 	}
 	return msg
+}
+
+func getNextWorkDay(now time.Time) time.Time {
+	var delta = 1
+	if now.Weekday() == time.Friday {
+		delta = 3
+	}
+	return now.AddDate(0, 0, delta)
 }
