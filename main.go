@@ -104,8 +104,10 @@ func main() {
 
 	slackUsers := getSlackUsers(slackToken, channel)
 	onCallUsers := getPagerdutyUsers(key, escalationPolicy, scheduleDate.Format(time.RFC3339))
+	body := formatMessageBody(onCallUsers, slackUsers)
 
-	fmt.Print(message(timeframe, scheduleDate.Format(timeFormat), onCallUsers, slackUsers))
+	concourseMessage(timeframe, scheduleDate.Format(timeFormat), body)
+	wingsMessage(body)
 }
 
 func getSlackUsers(token, channel string) (users map[string]slackUser) {
@@ -191,8 +193,33 @@ func onCallSchedule(key, escalationPolicy, date string) (resp schedule, err erro
 	return
 }
 
-func message(timeframe, date string, users []pagerdutyUser, slackUsers map[string]slackUser) string {
-	msg := timeframe + ` on-call users for ` + date + `:`
+func concourseMessage(timeframe, date, body string) {
+	msg := fmt.Sprintf("%s on-call users for %s:\n", timeframe, date)
+	msg += body
+
+	writeToFile("private.txt", msg)
+}
+
+func wingsMessage(body string) {
+	msg := "Good morning, your pilots (interrupt pair) for today are:\n"
+	msg += body
+	msg += "Reminder, you can also submit issues to https://github.com/pivotal-cf/concourse-wings/issues"
+
+	writeToFile("wings.txt", msg)
+}
+
+func writeToFile(fileName, msg string) {
+	f, err := os.Create(fileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	f.WriteString(msg)
+}
+
+func formatMessageBody(users []pagerdutyUser, slackUsers map[string]slackUser) string {
+	msg := ""
 	for _, u := range users {
 		contactMethod := u.Email
 
@@ -200,8 +227,7 @@ func message(timeframe, date string, users []pagerdutyUser, slackUsers map[strin
 			contactMethod = fmt.Sprintf("<@%s>", slackUsers[u.Name].ID)
 		}
 
-		msg = fmt.Sprintf(`%s
-- %s ( %s )`, msg, u.Name, contactMethod)
+		msg = msg + fmt.Sprintf("- %s ( %s )\n", u.Name, contactMethod)
 	}
 	return msg
 }

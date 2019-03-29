@@ -29,7 +29,12 @@ resources:
 - name: intercom
   type: slack
   source:
-    url: ((slack-hook))
+    url: ((private-slack-hook))
+
+- name: radio
+  type: slack
+  source:
+    url: ((wings-slack-hook))
 
 jobs:
 - name: welcome-aboard
@@ -48,7 +53,10 @@ jobs:
       CREW_TIMEFRAME: Current
   - put: intercom
     params:
-      text_file: message/message.txt
+      text_file: message/private.txt
+  - put: radio
+    params:
+      text_file: message/wings.txt
 
 - name: crew-change
   plan:
@@ -66,4 +74,4 @@ jobs:
       CREW_TIMEFRAME: Next
   - put: intercom
     params:
-      text_file: message/message.txt
+      text_file: message/private.txt
