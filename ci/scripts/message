@@ -1,7 +1,11 @@
 #!/bin/bash
+set -eux
 
+cp "time/input" flight-attendant/input
 
 pushd flight-attendant
-  go run main.go > ../message/message.txt
+  go build main.go
+  ./main
+  mv *.txt ../message
 popd
 

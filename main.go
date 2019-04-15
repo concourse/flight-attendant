@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 )
 
 type pagerdutyUser struct {
@@ -39,6 +40,20 @@ type oncall struct {
 	User pagerdutyUser `json:"user"`
 }
 
+type timeResourceOutput struct {
+	Version timeResourceVersion `json:"version"`
+}
+
+type timeResourceVersion struct {
+	Time string `json:"time"`
+}
+
+const (
+	today      = "Current"
+	nextDay    = "Next"
+	timeFormat = "Mon, Jan 02"
+)
+
 func main() {
 	key := os.Getenv("PAGERDUTY_API_KEY")
 	if key == "" {
@@ -64,10 +79,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	slackUsers := getSlackUsers(slackToken, channel)
-	onCallUsers := getPagerdutyUsers(key, escalationPolicy)
+	timeframe := os.Getenv("CREW_TIMEFRAME")
+	if timeframe == "" {
+		log.Fatal(fmt.Errorf("Empty or unset environment variable CREW_TIMEFRAME"))
+		os.Exit(1)
+	}
 
-	fmt.Print(message(onCallUsers, slackUsers))
+	var scheduleDate time.Time
+	now, err := readTime("input")
+	if err != nil {
+		log.Fatal(fmt.Errorf("Could not read time", err))
+		os.Exit(1)
+	}
+
+	switch timeframe {
+	case today:
+		scheduleDate = now
+	case nextDay:
+		scheduleDate = getNextWorkDay(now)
+	default:
+		log.Fatal(fmt.Errorf("CREW_TIMEFRAME must be one of: (%s|%s)", today, nextDay))
+		os.Exit(1)
+	}
+
+	slackUsers := getSlackUsers(slackToken, channel)
+	onCallUsers := getPagerdutyUsers(key, escalationPolicy, scheduleDate.Format(time.RFC3339))
+	body := formatMessageBody(onCallUsers, slackUsers)
+
+	concourseMessage(timeframe, scheduleDate.Format(timeFormat), body)
+	wingsMessage(body)
 }
 
 func getSlackUsers(token, channel string) (users map[string]slackUser) {
@@ -98,8 +138,8 @@ func getSlackUsers(token, channel string) (users map[string]slackUser) {
 	return
 }
 
-func getPagerdutyUsers(key, escalationPolicy string) []pagerdutyUser {
-	r, err := onCallSchedule(key, escalationPolicy)
+func getPagerdutyUsers(key, escalationPolicy, date string) []pagerdutyUser {
+	r, err := onCallSchedule(key, escalationPolicy, date)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -118,8 +158,8 @@ func getPagerdutyUsers(key, escalationPolicy string) []pagerdutyUser {
 	return users
 }
 
-func onCallSchedule(key, escalationPolicy string) (resp schedule, err error) {
-	u, err := url.Parse(fmt.Sprintf("https://api.pagerduty.com/oncalls?time_zone=UTC&include[]=users&escalation_policy_ids[]=%s", escalationPolicy))
+func onCallSchedule(key, escalationPolicy, date string) (resp schedule, err error) {
+	u, err := url.Parse(fmt.Sprintf("https://api.pagerduty.com/oncalls?time_zone=UTC&include[]=users&escalation_policy_ids[]=%s&since=%s&until=%s", escalationPolicy, date, date))
 	if err != nil {
 		return
 	}
@@ -153,8 +193,33 @@ func onCallSchedule(key, escalationPolicy string) (resp schedule, err error) {
 	return
 }
 
-func message(users []pagerdutyUser, slackUsers map[string]slackUser) string {
-	msg := `Current on-call users:`
+func concourseMessage(timeframe, date, body string) {
+	msg := fmt.Sprintf("%s on-call users for %s:\n", timeframe, date)
+	msg += body
+
+	writeToFile("private.txt", msg)
+}
+
+func wingsMessage(body string) {
+	msg := "Good morning, your pilots (interrupt pair) for today are:\n"
+	msg += body
+	msg += "Reminder, you can also submit issues to https://github.com/pivotal-cf/concourse-wings/issues"
+
+	writeToFile("wings.txt", msg)
+}
+
+func writeToFile(fileName, msg string) {
+	f, err := os.Create(fileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	f.WriteString(msg)
+}
+
+func formatMessageBody(users []pagerdutyUser, slackUsers map[string]slackUser) string {
+	msg := ""
 	for _, u := range users {
 		contactMethod := u.Email
 
@@ -162,8 +227,30 @@ func message(users []pagerdutyUser, slackUsers map[string]slackUser) string {
 			contactMethod = fmt.Sprintf("<@%s>", slackUsers[u.Name].ID)
 		}
 
-		msg = fmt.Sprintf(`%s
-- %s ( %s )`, msg, u.Name, contactMethod)
+		msg = msg + fmt.Sprintf("- %s ( %s )\n", u.Name, contactMethod)
 	}
 	return msg
+}
+
+func readTime(inputFileName string) (time.Time, error) {
+	file, err := ioutil.ReadFile(inputFileName)
+	if err != nil {
+		return time.Now(), err
+	}
+
+	var version timeResourceOutput
+	err = json.Unmarshal(file, &version)
+	if err != nil {
+		return time.Now(), err
+	}
+
+	return time.Parse(time.RFC3339, version.Version.Time)
+}
+
+func getNextWorkDay(now time.Time) time.Time {
+	var delta = 1
+	if now.Weekday() == time.Friday {
+		delta = 3
+	}
+	return now.AddDate(0, 0, delta)
 }

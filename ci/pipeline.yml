@@ -18,16 +18,30 @@ resources:
     days: [Monday, Tuesday, Wednesday, Thursday, Friday]
     location: "America/Toronto"
 
+- name: weekday-afternoons
+  type: time
+  source:
+    start: 4:00 PM
+    stop: 5:00 PM
+    days: [Monday, Tuesday, Wednesday, Thursday, Friday]
+    location: "America/Toronto"
+
 - name: intercom
   type: slack
   source:
-    url: ((slack-hook))
+    url: ((private-slack-hook))
+
+- name: radio
+  type: slack
+  source:
+    url: ((wings-slack-hook))
 
 jobs:
-- name: passenger-announcement
+- name: welcome-aboard
   plan:
   - get: flight-attendant
-  - get: weekday-mornings
+  - get: time
+    resource: weekday-mornings
     trigger: true
   - task: message
     file: flight-attendant/ci/tasks/message.yml
@@ -36,6 +50,28 @@ jobs:
       PAGERDUTY_API_KEY: ((pd-api-key))
       SLACK_TOKEN: ((slack-token))
       SLACK_CHANNEL: ((slack-channel))
+      CREW_TIMEFRAME: Current
   - put: intercom
     params:
-      text_file: message/message.txt
+      text_file: message/private.txt
+  - put: radio
+    params:
+      text_file: message/wings.txt
+
+- name: crew-change
+  plan:
+  - get: flight-attendant
+  - get: time
+    resource: weekday-afternoons
+    trigger: true
+  - task: message
+    file: flight-attendant/ci/tasks/message.yml
+    params:
+      PAGERDUTY_ESCALATION_POLICY: ((pd-escalation-policy))
+      PAGERDUTY_API_KEY: ((pd-api-key))
+      SLACK_TOKEN: ((slack-token))
+      SLACK_CHANNEL: ((slack-channel))
+      CREW_TIMEFRAME: Next
+  - put: intercom
+    params:
+      text_file: message/private.txt
