@@ -1,4 +1,4 @@
-module .
+module github.com/concourse/flight-attendant
 
 go 1.12
 

@@ -5,40 +5,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
-	"net/url"
 	"os"
 	"time"
+
+	"github.com/concourse/flight-attendant/pagerduty"
+	"github.com/concourse/flight-attendant/slack"
 )
-
-type pagerdutyUser struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
-
-type slackUser struct {
-	RealName string `json:"real_name"`
-	Name     string `json:"name"`
-	ID       string `json:"id"`
-}
-
-type slackUserInfo struct {
-	User slackUser `json:"user"`
-}
-
-type slackGroup struct {
-	Group struct {
-		Members []string `json:"members"`
-	} `json:"group"`
-}
-
-type schedule struct {
-	Oncalls []oncall `json:oncalls`
-}
-
-type oncall struct {
-	User pagerdutyUser `json:"user"`
-}
 
 type timeResourceOutput struct {
 	Version timeResourceVersion `json:"version"`
@@ -88,7 +60,7 @@ func main() {
 	var scheduleDate time.Time
 	now, err := readTime("input")
 	if err != nil {
-		log.Fatal(fmt.Errorf("Could not read time", err))
+		log.Fatal(fmt.Errorf("Could not read time: %s", err))
 		os.Exit(1)
 	}
 
@@ -102,102 +74,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	slackUsers := getSlackUsers(slackToken, channel)
-	onCallUsers := getPagerdutyUsers(key, escalationPolicy, scheduleDate.Format(time.RFC3339))
+	slackUsers := slack.GetUsers(slackToken, channel)
+	onCallUsers := pagerduty.GetUsers(key, escalationPolicy, scheduleDate.Format(time.RFC3339))
 	body := formatMessageBody(onCallUsers, slackUsers)
 
 	concourseMessage(timeframe, scheduleDate.Format(timeFormat), body)
 	wingsMessage(body)
 }
 
-func getSlackUsers(token, channel string) (users map[string]slackUser) {
-	users = make(map[string]slackUser)
-	resp, err := http.Get(fmt.Sprintf("https://slack.com/api/groups.info?token=%s&channel=%s", token, channel))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-
-	var group slackGroup
-	err = json.Unmarshal(body, &group)
-
-	var userInfo slackUserInfo
-	for _, member := range group.Group.Members {
-		r, err := http.Get(fmt.Sprintf("https://slack.com/api/users.info?token=%s&user=%s", token, member))
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		body, err := ioutil.ReadAll(r.Body)
-
-		err = json.Unmarshal(body, &userInfo)
-		users[userInfo.User.RealName] = userInfo.User
-		r.Body.Close()
-	}
-	return
-}
-
-func getPagerdutyUsers(key, escalationPolicy, date string) []pagerdutyUser {
-	r, err := onCallSchedule(key, escalationPolicy, date)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var users []pagerdutyUser
-	seen := make(map[string]struct{}, len(r.Oncalls))
-	for _, onCall := range r.Oncalls {
-		if _, ok := seen[onCall.User.Email]; ok {
-			continue
-		}
-
-		seen[onCall.User.Email] = struct{}{}
-		users = append(users, onCall.User)
-	}
-
-	return users
-}
-
-func onCallSchedule(key, escalationPolicy, date string) (resp schedule, err error) {
-	u, err := url.Parse(fmt.Sprintf("https://api.pagerduty.com/oncalls?time_zone=UTC&include[]=users&escalation_policy_ids[]=%s&since=%s&until=%s", escalationPolicy, date, date))
-	if err != nil {
-		return
-	}
-	req := &http.Request{
-		Method: "GET",
-		Header: map[string][]string{
-			"Accept":        {"application/vnd.pagerduty+json;version=2"},
-			"Authorization": {fmt.Sprintf("Token token=%s", key)},
-		},
-		URL: u,
-	}
-
-	r, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return
-	}
-	defer r.Body.Close()
-
-	bodyBytes, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return
-	}
-
-	if r.StatusCode != http.StatusOK {
-		err = fmt.Errorf("%s: %s", r.Status, string(bodyBytes))
-		return
-	}
-
-	err = json.Unmarshal(bodyBytes, &resp)
-
-	return
-}
-
 func concourseMessage(timeframe, date, body string) {
 	msg := fmt.Sprintf("%s on-call users for %s:\n", timeframe, date)
 	msg += body
 
-	writeToFile("private.txt", msg)
+	err := ioutil.WriteFile("wings.txt", []byte(msg), 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func wingsMessage(body string) {
@@ -205,20 +97,13 @@ func wingsMessage(body string) {
 	msg += body
 	msg += "Reminder, you can also submit issues to https://github.com/pivotal-cf/concourse-wings/issues"
 
-	writeToFile("wings.txt", msg)
-}
-
-func writeToFile(fileName, msg string) {
-	f, err := os.Create(fileName)
+	err := ioutil.WriteFile("wings.txt", []byte(msg), 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer f.Close()
-
-	f.WriteString(msg)
 }
 
-func formatMessageBody(users []pagerdutyUser, slackUsers map[string]slackUser) string {
+func formatMessageBody(users []pagerduty.User, slackUsers map[string]slack.User) string {
 	msg := ""
 	for _, u := range users {
 		contactMethod := u.Email
