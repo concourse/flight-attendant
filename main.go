@@ -95,7 +95,6 @@ func concourseMessage(timeframe, date, body string) {
 func wingsMessage(body string) {
 	msg := "Good morning, your pilots (interrupt pair) for today are:\n"
 	msg += body
-	msg += "Reminder, you can also submit issues to https://github.com/pivotal-cf/concourse-wings/issues"
 
 	err := ioutil.WriteFile("wings.txt", []byte(msg), 0644)
 	if err != nil {
