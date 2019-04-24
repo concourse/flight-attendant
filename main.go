@@ -86,7 +86,7 @@ func concourseMessage(timeframe, date, body string) {
 	msg := fmt.Sprintf("%s on-call users for %s:\n", timeframe, date)
 	msg += body
 
-	err := ioutil.WriteFile("wings.txt", []byte(msg), 0644)
+	err := ioutil.WriteFile("private.txt", []byte(msg), 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
