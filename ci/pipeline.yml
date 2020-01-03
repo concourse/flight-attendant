@@ -31,11 +31,6 @@ resources:
   source:
     url: ((private-slack-hook))
 
-- name: radio-wings
-  type: slack
-  source:
-    url: ((wings-slack-hook))
-
 - name: radio-hush-house
   type: slack
   source:
@@ -60,9 +55,6 @@ jobs:
   - put: intercom
     params:
       text_file: message/private.txt
-  - put: radio-wings
-    params:
-      text_file: message/wings.txt
   - put: radio-hush-house
     params:
       text_file: message/wings.txt
