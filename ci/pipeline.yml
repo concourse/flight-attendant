@@ -31,12 +31,6 @@ resources:
   source:
     url: ((private-slack-hook))
 
-- name: radio-hush-house
-  type: slack
-  source:
-    url: ((hh-slack-hook))
-
-
 jobs:
 - name: welcome-aboard
   plan:
@@ -55,9 +49,6 @@ jobs:
   - put: intercom
     params:
       text_file: message/private.txt
-  - put: radio-hush-house
-    params:
-      text_file: message/wings.txt
 
 - name: crew-change
   plan:
