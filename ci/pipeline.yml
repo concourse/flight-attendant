@@ -41,7 +41,8 @@ jobs:
   - task: message
     file: flight-attendant/ci/tasks/message.yml
     params:
-      PAGERDUTY_ESCALATION_POLICY: ((pd-escalation-policy))
+      PAGERDUTY_INTERNAL_ESCALATION_POLICY: ((pd-escalation-policy))
+      PAGERDUTY_EXTERNAL_ESCALATION_POLICY: ((pd-external-escalation-policy))
       PAGERDUTY_API_KEY: ((pd-api-key))
       SLACK_TOKEN: ((slack-token))
       SLACK_CHANNEL: ((slack-channel))
@@ -60,6 +61,7 @@ jobs:
     file: flight-attendant/ci/tasks/message.yml
     params:
       PAGERDUTY_ESCALATION_POLICY: ((pd-escalation-policy))
+      PAGERDUTY_EXTERNAL_ESCALATION_POLICY: ((pd-external-escalation-policy))
       PAGERDUTY_API_KEY: ((pd-api-key))
       SLACK_TOKEN: ((slack-token))
       SLACK_CHANNEL: ((slack-channel))

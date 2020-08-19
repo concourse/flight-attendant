@@ -33,9 +33,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	escalationPolicy := os.Getenv("PAGERDUTY_ESCALATION_POLICY")
-	if escalationPolicy == "" {
-		log.Fatal(fmt.Errorf("Empty or unset environment variable PAGERDUTY_ESCALATION_POLICY"))
+	internalEscalationPolicy := os.Getenv("PAGERDUTY_INTERNAL_ESCALATION_POLICY")
+	if internalEscalationPolicy == "" {
+		log.Fatal(fmt.Errorf("Empty or unset environment variable PAGERDUTY_INTERNAL_ESCALATION_POLICY"))
+		os.Exit(1)
+	}
+
+	externalEscalationPolicy := os.Getenv("PAGERDUTY_EXTERNAL_ESCALATION_POLICY")
+	if externalEscalationPolicy == "" {
+		log.Fatal(fmt.Errorf("Empty or unset environment variable PAGERDUTY_EXTERNAL_ESCALATION_POLICY"))
 		os.Exit(1)
 	}
 
@@ -75,34 +81,34 @@ func main() {
 	}
 
 	slackUsers := slack.GetUsers(slackToken, channel)
-	onCallUsers := pagerduty.GetUsers(key, escalationPolicy, scheduleDate.Format(time.RFC3339))
-	body := formatMessageBody(onCallUsers, slackUsers)
+	internalOnCallUsers := pagerduty.GetUsers(
+		key,
+		internalEscalationPolicy,
+		scheduleDate.Format(time.RFC3339),
+	)
+	internalBody := formatUserList(internalOnCallUsers, slackUsers)
+	externalOnCallUsers := pagerduty.GetUsers(
+		key,
+		externalEscalationPolicy,
+		scheduleDate.Format(time.RFC3339),
+	)
+	externalBody := formatUserList(externalOnCallUsers, slackUsers)
 
-	concourseMessage(timeframe, scheduleDate.Format(timeFormat), body)
-	wingsMessage(body)
+	msg := concourseMessage(timeframe+" internal", scheduleDate.Format(timeFormat), internalBody) + concourseMessage(timeframe+" external", scheduleDate.Format(timeFormat), externalBody)
+
+	err = ioutil.WriteFile("private.txt", []byte(msg), 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
-func concourseMessage(timeframe, date, body string) {
+func concourseMessage(timeframe, date, body string) string {
 	msg := fmt.Sprintf("%s on-call users for %s:\n", timeframe, date)
 	msg += body
-
-	err := ioutil.WriteFile("private.txt", []byte(msg), 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
+	return msg
 }
 
-func wingsMessage(body string) {
-	msg := "Good morning, your pilots (interrupt pair) for today are:\n"
-	msg += body
-
-	err := ioutil.WriteFile("wings.txt", []byte(msg), 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func formatMessageBody(users []pagerduty.User, slackUsers map[string]slack.User) string {
+func formatUserList(users []pagerduty.User, slackUsers map[string]slack.User) string {
 	msg := ""
 	for _, u := range users {
 		contactMethod := u.Email
